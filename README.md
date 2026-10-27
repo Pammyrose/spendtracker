@@ -2,7 +2,7 @@
 
 ## App Preview
 
-![SpendTracker welcome screen with the wallet illustration, tagline, and Get Started button](docs/images/welcome-screen.png)
+![SpendTracker welcome screen with the wallet illustration, tagline, and Get Started button](User%20attachment4.png)
 
 ## About the Project
 
