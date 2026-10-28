@@ -1,0 +1,20 @@
+{
+  "name": "spendtracker-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "db:init": "node scripts/init-db.js",
+    "test": "node --test test/*.test.js",
+    "test:db": "node --test integration/*.test.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "mysql2": "^3.15.0",
+    "zod": "^4.1.0"
+  }
+}

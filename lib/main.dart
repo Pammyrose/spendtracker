@@ -1,34 +1,103 @@
 import 'package:flutter/material.dart';
 
+import 'app_theme.dart';
+
 import 'expenses_page.dart';
 import 'bills_page.dart';
 import 'welcome_screen.dart';
+import 'income_page.dart';
+import 'app_data.dart';
+import 'entry_widgets.dart';
+import 'more_pages.dart';
+import 'notifications_inbox_page.dart';
+import 'login_page.dart';
+import 'cloud_api.dart';
+import 'account_greeting.dart';
+import 'account_sync_banner.dart';
 
 void main() => runApp(const SpendTrackerApp());
 
-const _pink = Color(0xFFFF5C83);
-const _ink = Color(0xFF151826);
-const _muted = Color(0xFF788396);
+class SpendTrackerApp extends StatefulWidget {
+  const SpendTrackerApp({super.key, this.cloud, this.data});
+  final CloudApi? cloud;
+  final AppData? data;
+  @override
+  State<SpendTrackerApp> createState() => _SpendTrackerAppState();
+}
 
-class SpendTrackerApp extends StatelessWidget {
-  const SpendTrackerApp({super.key});
+class _SpendTrackerAppState extends State<SpendTrackerApp> {
+  late final AppData _data;
+  @override
+  void initState() {
+    super.initState();
+    _data =
+        widget.data ??
+        AppData(seed: false, liveAccount: true, cloud: widget.cloud);
+    _data.load();
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'SpendTracker',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: _pink),
-        scaffoldBackgroundColor: const Color(0xFFFCF8FA),
-        textTheme: ThemeData.light().textTheme.apply(
-          bodyColor: _ink,
-          displayColor: _ink,
-        ),
-      ),
-      home: const WelcomeScreen(destination: HomeScreen()),
-    );
+  void dispose() {
+    _data.dispose();
+    super.dispose();
   }
+
+  @override
+  Widget build(BuildContext context) => AppDataScope(
+    data: _data,
+    child: Builder(
+      builder: (context) {
+        final data = AppDataScope.of(context);
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'SpendTracker',
+          theme: ThemeData(
+            brightness: data.palette.brightness,
+            colorScheme: ColorScheme.fromSeed(
+              brightness: data.palette.brightness,
+              seedColor: data.accent,
+              primary: data.accent,
+              onPrimary: data.palette.onAccent,
+              surface: data.palette.surface,
+              onSurface: data.palette.ink,
+              primaryContainer: data.palette.soft,
+              onPrimaryContainer: data.palette.ink,
+              outlineVariant: data.palette.border,
+            ),
+            extensions: [data.palette],
+            scaffoldBackgroundColor: data.palette.background,
+            canvasColor: data.palette.surface,
+            dividerColor: data.palette.border,
+            appBarTheme: AppBarTheme(
+              backgroundColor: data.palette.background,
+              surfaceTintColor: Colors.transparent,
+              foregroundColor: data.palette.ink,
+            ),
+            dialogTheme: DialogThemeData(
+              backgroundColor: data.palette.surface,
+              surfaceTintColor: Colors.transparent,
+            ),
+            bottomSheetTheme: BottomSheetThemeData(
+              backgroundColor: data.palette.surface,
+              modalBackgroundColor: data.palette.surface,
+              surfaceTintColor: Colors.transparent,
+            ),
+            popupMenuTheme: PopupMenuThemeData(
+              color: data.palette.surface,
+              surfaceTintColor: Colors.transparent,
+            ),
+            textTheme: ThemeData.light().textTheme.apply(
+              bodyColor: data.palette.ink,
+              displayColor: data.palette.ink,
+            ),
+          ),
+          home: const WelcomeScreen(
+            destination: AuthGate(destination: HomeScreen()),
+          ),
+        );
+      },
+    ),
+  );
 }
 
 // Changing the selected tab or balance visibility rebuilds this screen.
@@ -43,104 +112,103 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _tabs = ['Home', 'Expenses', 'Bills', 'Income', 'More'];
   int _selectedIndex = 0;
   bool _balanceVisible = true;
-  final _bills = BillsController();
-
-  @override
-  void dispose() {
-    _bills.dispose();
-    super.dispose();
-  }
+  BillsController get _bills => AppDataScope.of(context).bills;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Align(
-          alignment: Alignment.topCenter,
-          // Keep cards readable on wider displays too.
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 600),
-            // Keep expense entries and the selected month when changing tabs.
-            child: IndexedStack(
-              index: _selectedIndex == 1
-                  ? 0
-                  : _selectedIndex == 2
-                  ? 1
-                  : 2,
-              children: [
-                const ExpensesPage(),
-                BillsPage(controller: _bills),
-                Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 20, 16, 8),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          children: [
+            const AccountSyncBanner(),
+            Expanded(
+              child: Align(
+                alignment: Alignment.topCenter,
+                // Keep cards readable on wider displays too.
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 600),
+                  // Keep expense entries and the selected month when changing tabs.
+                  child: IndexedStack(
+                    index: _selectedIndex == 1
+                        ? 0
+                        : _selectedIndex == 2
+                        ? 1
+                        : _selectedIndex == 3
+                        ? 2
+                        : _selectedIndex == 4
+                        ? 3
+                        : 4,
+                    children: [
+                      const ExpensesPage(),
+                      BillsPage(controller: _bills),
+                      const IncomePage(),
+                      const MorePage(),
+                      Column(
                         children: [
-                          Expanded(
-                            child: Text(
-                              _selectedIndex == 0
-                                  ? 'Good Morning,\nPamela!'
-                                  : _tabs[_selectedIndex],
-                              style: const TextStyle(
-                                fontSize: 24,
-                                height: 1.15,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.6,
-                              ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 20, 16, 8),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(child: const AccountGreeting()),
+                                IconButton(
+                                  tooltip: 'Notifications',
+                                  icon: const Icon(
+                                    Icons.notifications_none_rounded,
+                                  ),
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            const NotificationsInboxPage(),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
                             ),
                           ),
-                          IconButton(
-                            tooltip: 'Notifications',
-                            icon: const Icon(Icons.notifications_none_rounded),
-                            onPressed: () {
-                              ScaffoldMessenger.of(context)
-                                ..hideCurrentSnackBar()
-                                ..showSnackBar(
-                                  const SnackBar(
-                                    content: Text('No notifications yet.'),
-                                  ),
-                                );
-                            },
+                          Expanded(
+                            // Scrolling prevents overflow on smaller phones.
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                              child: _selectedIndex == 0
+                                  ? _buildDashboard()
+                                  : Padding(
+                                      padding: const EdgeInsets.only(top: 32),
+                                      child: Text(
+                                        '${_tabs[_selectedIndex]} will appear here.',
+                                        style: TextStyle(
+                                          color: AppPalette.of(context).muted,
+                                        ),
+                                      ),
+                                    ),
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                    Expanded(
-                      // Scrolling prevents overflow on smaller phones.
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                        child: _selectedIndex == 0
-                            ? _buildDashboard()
-                            : Padding(
-                                padding: const EdgeInsets.only(top: 32),
-                                child: Text(
-                                  '${_tabs[_selectedIndex]} will appear here.',
-                                  style: const TextStyle(color: _muted),
-                                ),
-                              ),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
       bottomNavigationBar: DecoratedBox(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: Color(0xFFF0F0F4))),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: AppPalette.of(context).border)),
         ),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
           // setState asks Flutter to rebuild with the new selected tab.
           onTap: (index) => setState(() => _selectedIndex = index),
           type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
+          backgroundColor: AppPalette.of(context).surface,
           elevation: 0,
-          selectedItemColor: _pink,
-          unselectedItemColor: const Color(0xFFA8B3C2),
+          selectedItemColor: Theme.of(context).colorScheme.primary,
+          unselectedItemColor: AppPalette.of(context).muted,
           selectedFontSize: 11,
           unselectedFontSize: 11,
           items: const [
@@ -171,6 +239,25 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildDashboard() {
+    final data = AppDataScope.of(context);
+    final now = DateTime.now();
+    bool inMonth(DateTime date) =>
+        date.year == now.year && date.month == now.month;
+    final income = data.incomes
+        .where((e) => inMonth(e.date))
+        .fold(0.0, (sum, e) => sum + e.amount);
+    final spent = data.expenses
+        .where((e) => inMonth(e.date))
+        .fold(0.0, (sum, e) => sum + e.amount);
+    final previousMonth = DateTime(now.year, now.month - 1);
+    bool inPreviousMonth(DateTime date) =>
+        date.year == previousMonth.year && date.month == previousMonth.month;
+    final previousIncome = data.incomes
+        .where((e) => inPreviousMonth(e.date))
+        .fold(0.0, (sum, e) => sum + e.amount);
+    final previousSpent = data.expenses
+        .where((e) => inPreviousMonth(e.date))
+        .fold(0.0, (sum, e) => sum + e.amount);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -179,8 +266,11 @@ class _HomeScreenState extends State<HomeScreen> {
           width: double.infinity,
           padding: const EdgeInsets.fromLTRB(20, 8, 12, 18),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFFFDCE5), Color(0xFFFFCFDB)],
+            gradient: LinearGradient(
+              colors: [
+                AppPalette.of(context).heroStart,
+                AppPalette.of(context).heroEnd,
+              ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -214,7 +304,9 @@ class _HomeScreenState extends State<HomeScreen> {
               FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
-                  _balanceVisible ? '\u20b1 12,500.00' : '\u20b1 ••••••',
+                  _balanceVisible
+                      ? formatMoney(context, income - spent)
+                      : '${data.symbol} ••••••',
                   style: const TextStyle(
                     fontSize: 32,
                     height: 1.15,
@@ -227,14 +319,16 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 16),
         // Both Expanded widgets get an equal share of the row's width.
-        const Row(
+        Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: _SummaryCard(
                 title: 'Total Income',
-                amount: '\u20b1 30,000.00',
-                percentage: '12%',
+                amount: formatMoney(context, income),
+                percentage: previousIncome == 0
+                    ? '0%'
+                    : '${((income - previousIncome).abs() / previousIncome * 100).round()}%',
                 income: true,
               ),
             ),
@@ -242,8 +336,10 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(
               child: _SummaryCard(
                 title: 'Total Spent',
-                amount: '\u20b1 17,500.00',
-                percentage: '8%',
+                amount: formatMoney(context, spent),
+                percentage: previousSpent == 0
+                    ? '0%'
+                    : '${((spent - previousSpent).abs() / previousSpent * 100).round()}%',
                 income: false,
               ),
             ),
@@ -275,11 +371,14 @@ class _SummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = income ? const Color(0xFF20BF96) : _pink;
+    final color = income
+        ? const Color(0xFF20BF96)
+        : Theme.of(context).colorScheme.primary;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppPalette.of(context).surface,
+        border: Border.all(color: AppPalette.of(context).border),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -304,7 +403,7 @@ class _SummaryCard extends StatelessWidget {
                 radius: 17,
                 backgroundColor: income
                     ? const Color(0xFFD9F8EF)
-                    : const Color(0xFFFFDFE7),
+                    : AppPalette.of(context).soft,
                 child: Icon(
                   income
                       ? Icons.arrow_upward_rounded

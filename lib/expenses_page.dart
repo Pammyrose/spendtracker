@@ -2,30 +2,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import 'entry_widgets.dart';
+import 'app_theme.dart';
 
-const _pink = Color(0xFFFF5C83);
-const _muted = Color(0xFF788396);
-const _categories = [
-  'Food',
-  'Shopping',
-  'Transportation',
-  'Bills',
-  'Entertainment',
-  'Others',
-  'Health',
-  'Education',
-];
-const _colors = [
-  Color(0xFFFF5C83),
-  Color(0xFFFFC56D),
-  Color(0xFF57CFBA),
-  Color(0xFFA48BFA),
-  Color(0xFF6687F5),
-  Color(0xFF98A1AF),
-  Color(0xFFFF5C83),
-  Color(0xFFFF943B),
-];
+import 'entry_widgets.dart';
+import 'app_data.dart';
+import 'category_catalog.dart';
+import 'category_picker.dart';
+
 const _months = [
   'January',
   'February',
@@ -42,23 +25,6 @@ const _months = [
 ];
 
 // Expenses are kept in memory for now. One record drives both chart and list.
-class _Expense {
-  const _Expense(this.title, this.category, this.amount, this.date);
-  final String title;
-  final int category;
-  final double amount;
-  final DateTime date;
-}
-
-String _money(double value) {
-  final parts = value.toStringAsFixed(2).split('.');
-  final whole = parts.first.replaceAllMapped(
-    RegExp(r'(\d)(?=(\d{3})+$)'),
-    (match) => '${match[1]},',
-  );
-  return '\u20b1 $whole.${parts.last}';
-}
-
 class ExpensesPage extends StatefulWidget {
   const ExpensesPage({super.key});
 
@@ -67,22 +33,19 @@ class ExpensesPage extends StatefulWidget {
 }
 
 class _ExpensesPageState extends State<ExpensesPage> {
-  DateTime _month = DateTime(2026, 10);
+  List<AppCategory> get _catalog => AppDataScope.of(context).expenseCategories;
+  List<String> get _categories =>
+      _catalog.map((category) => category.name).toList();
+  List<Color> get _colors =>
+      _catalog.map((category) => category.color).toList();
+  DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   bool _transactions = false;
-  final List<_Expense> _expenses = [
-    _Expense('Food and groceries', 0, 3100, DateTime(2026, 10, 24)),
-    _Expense('Shopping', 1, 2050, DateTime(2026, 10, 22)),
-    _Expense('Transportation', 2, 1550, DateTime(2026, 10, 20)),
-    _Expense('Monthly bills', 3, 2050, DateTime(2026, 10, 18)),
-    _Expense('Entertainment', 4, 1000, DateTime(2026, 10, 16)),
-    _Expense('Other expenses', 5, 500, DateTime(2026, 10, 14)),
-    _Expense('September expenses', 0, 12850, DateTime(2026, 9, 30)),
-  ];
+  List<ExpenseRecord> get _expenses => AppDataScope.of(context).expenses;
 
-  List<_Expense> _forMonth(DateTime month) => _expenses
+  List<ExpenseRecord> _forMonth(DateTime month) => _expenses
       .where((e) => e.date.year == month.year && e.date.month == month.month)
       .toList();
-  double _total(List<_Expense> entries) =>
+  double _total(List<ExpenseRecord> entries) =>
       entries.fold(0, (sum, e) => sum + e.amount);
 
   void _changeMonth(int offset) =>
@@ -102,13 +65,13 @@ class _ExpensesPageState extends State<ExpensesPage> {
   }
 
   Future<void> _addExpense() async {
-    final expense = await Navigator.push<_Expense>(
+    final expense = await Navigator.push<ExpenseRecord>(
       context,
       MaterialPageRoute(builder: (_) => _ExpenseForm(initialDate: _month)),
     );
     if (expense != null && mounted) {
       setState(() {
-        _expenses.add(expense);
+        AppDataScope.of(context).addExpense(expense);
         _month = DateTime(expense.date.year, expense.date.month);
       });
     }
@@ -140,8 +103,8 @@ class _ExpensesPageState extends State<ExpensesPage> {
                 tooltip: 'Add expense',
                 onPressed: _addExpense,
                 style: IconButton.styleFrom(
-                  backgroundColor: _pink,
-                  foregroundColor: Colors.white,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 ),
                 icon: const Icon(Icons.add),
               ),
@@ -169,16 +132,16 @@ class _ExpensesPageState extends State<ExpensesPage> {
                         '${_months[_month.month - 1]} ${_month.year}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF151826),
+                        style: TextStyle(
+                          color: AppPalette.of(context).ink,
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
-                    const Icon(
+                    Icon(
                       Icons.keyboard_arrow_down_rounded,
-                      color: Color(0xFF151826),
+                      color: AppPalette.of(context).ink,
                       size: 18,
                     ),
                   ],
@@ -203,7 +166,8 @@ class _ExpensesPageState extends State<ExpensesPage> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppPalette.of(context).surface,
+                    border: Border.all(color: AppPalette.of(context).border),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Row(
@@ -226,14 +190,17 @@ class _ExpensesPageState extends State<ExpensesPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'Total Spent',
-                              style: TextStyle(color: _muted, fontSize: 12),
+                              style: TextStyle(
+                                color: AppPalette.of(context).muted,
+                                fontSize: 12,
+                              ),
                             ),
                             FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text(
-                                _money(total),
+                                formatMoney(context, total),
                                 style: const TextStyle(
                                   fontSize: 25,
                                   fontWeight: FontWeight.w800,
@@ -247,7 +214,11 @@ class _ExpensesPageState extends State<ExpensesPage> {
                                 vertical: 5,
                               ),
                               decoration: BoxDecoration(
-                                color: difference <= 0
+                                color:
+                                    AppPalette.of(context).brightness ==
+                                        Brightness.dark
+                                    ? AppPalette.of(context).soft
+                                    : difference <= 0
                                     ? const Color(0xFFD9F8EF)
                                     : const Color(0xFFFFDFE7),
                                 borderRadius: BorderRadius.circular(5),
@@ -257,13 +228,16 @@ class _ExpensesPageState extends State<ExpensesPage> {
                                     ? 'No spending recorded last month'
                                     : difference == 0
                                     ? 'Same as last month'
-                                    : '${difference < 0 ? '\u2193' : '\u2191'} ${_money(difference.abs())} ${difference < 0 ? 'less' : 'more'} than last month',
+                                    : '${difference < 0 ? '\u2193' : '\u2191'} ${formatMoney(context, difference.abs())} ${difference < 0 ? 'less' : 'more'} than last month',
                                 style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w600,
                                   color: difference <= 0
-                                      ? const Color(0xFF008C69)
-                                      : _pink,
+                                      ? AppPalette.of(context).brightness ==
+                                                Brightness.dark
+                                            ? const Color(0xFF52D8B0)
+                                            : const Color(0xFF008C69)
+                                      : Theme.of(context).colorScheme.primary,
                                 ),
                               ),
                             ),
@@ -278,7 +252,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
                 Container(
                   padding: const EdgeInsets.all(3),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEBEEF3),
+                    color: AppPalette.of(context).soft,
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: Row(
@@ -298,12 +272,12 @@ class _ExpensesPageState extends State<ExpensesPage> {
                 ),
                 const SizedBox(height: 16),
                 if (entries.isEmpty)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.symmetric(vertical: 48),
                     child: Text(
                       'No expenses this month.\nTap + to add your first expense.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: _muted),
+                      style: TextStyle(color: AppPalette.of(context).muted),
                     ),
                   )
                 else if (_transactions)
@@ -330,10 +304,13 @@ class _ExpensesPageState extends State<ExpensesPage> {
                       ),
                       subtitle: Text(
                         '${_categories[e.category]} \u00b7 ${_months[e.date.month - 1].substring(0, 3)} ${e.date.day}',
-                        style: const TextStyle(fontSize: 11, color: _muted),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppPalette.of(context).muted,
+                        ),
                       ),
                       trailing: Text(
-                        _money(e.amount),
+                        formatMoney(context, e.amount),
                         style: const TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 13,
@@ -344,7 +321,8 @@ class _ExpensesPageState extends State<ExpensesPage> {
                 else ...[
                   // CustomPainter draws the donut without a chart dependency.
                   Semantics(
-                    label: 'Category spending chart. Total ${_money(total)}',
+                    label:
+                        'Category spending chart. Total ${formatMoney(context, total)}',
                     child: SizedBox(
                       width: 190,
                       height: 190,
@@ -352,22 +330,30 @@ class _ExpensesPageState extends State<ExpensesPage> {
                         alignment: Alignment.center,
                         children: [
                           Positioned.fill(
-                            child: CustomPaint(painter: _DonutPainter(amounts)),
+                            child: CustomPaint(
+                              painter: SpendingDonutPainter(
+                                amounts,
+                                colors: _colors,
+                              ),
+                            ),
                           ),
                           Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                _money(total),
+                                formatMoney(context, total),
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w800,
                                   fontSize: 15,
                                 ),
                               ),
                               const SizedBox(height: 3),
-                              const Text(
+                              Text(
                                 'Total Spent',
-                                style: TextStyle(color: _muted, fontSize: 12),
+                                style: TextStyle(
+                                  color: AppPalette.of(context).muted,
+                                  fontSize: 12,
+                                ),
                               ),
                             ],
                           ),
@@ -377,49 +363,62 @@ class _ExpensesPageState extends State<ExpensesPage> {
                   ),
                   const SizedBox(height: 16),
                   for (var i = 0; i < _categories.length; i++)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 7),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              color: _colors[i],
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 9),
-                          Expanded(
-                            flex: 5,
-                            child: Text(
-                              _categories[i],
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
+                    if (i < 8 || amounts[i] > 0)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 7),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: _colors[i],
+                                shape: BoxShape.circle,
                               ),
                             ),
-                          ),
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              '${(amounts[i] / total * 100).round()}%',
-                              style: const TextStyle(
-                                color: _muted,
-                                fontSize: 12,
+                            const SizedBox(width: 9),
+                            Expanded(
+                              flex: 5,
+                              child: Text(
+                                _categories[i],
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                             ),
-                          ),
-                          Text(
-                            _money(amounts[i]),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                '${(amounts[i] / total * 100).round()}%',
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                  color: AppPalette.of(context).muted,
+                                  fontSize: 12,
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 16),
+                            // Use the same column widths for every category,
+                            // regardless of how many digits its amount contains.
+                            Expanded(
+                              flex: 4,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerRight,
+                                child: Text(
+                                  formatMoney(context, amounts[i]),
+                                  textAlign: TextAlign.right,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
                 ],
               ],
             ),
@@ -435,8 +434,12 @@ class _ExpensesPageState extends State<ExpensesPage> {
       child: TextButton(
         onPressed: onTap,
         style: TextButton.styleFrom(
-          backgroundColor: selected ? _pink : Colors.transparent,
-          foregroundColor: selected ? Colors.white : _muted,
+          backgroundColor: selected
+              ? Theme.of(context).colorScheme.primary
+              : Colors.transparent,
+          foregroundColor: selected
+              ? Theme.of(context).colorScheme.onPrimary
+              : AppPalette.of(context).muted,
           minimumSize: const Size(0, 40),
           padding: const EdgeInsets.symmetric(horizontal: 8),
           shape: const StadiumBorder(),
@@ -447,9 +450,13 @@ class _ExpensesPageState extends State<ExpensesPage> {
   );
 }
 
-class _DonutPainter extends CustomPainter {
-  const _DonutPainter(this.amounts);
+class SpendingDonutPainter extends CustomPainter {
+  const SpendingDonutPainter(
+    this.amounts, {
+    this.colors = expenseCategoryColors,
+  });
   final List<double> amounts;
+  final List<Color> colors;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -469,7 +476,7 @@ class _DonutPainter extends CustomPainter {
           math.max(0, sweep - 0.012),
           false,
           Paint()
-            ..color = _colors[i]
+            ..color = colors[i]
             ..style = PaintingStyle.stroke
             ..strokeWidth = 26,
         );
@@ -479,7 +486,7 @@ class _DonutPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _DonutPainter oldDelegate) => true;
+  bool shouldRepaint(covariant SpendingDonutPainter oldDelegate) => true;
 }
 
 // The form returns a new expense to the page that opened it.
@@ -491,21 +498,18 @@ class _ExpenseForm extends StatefulWidget {
 }
 
 class _ExpenseFormState extends State<_ExpenseForm> {
+  List<AppCategory> get _catalog => AppDataScope.of(context).expenseCategories;
+  List<String> get _categories =>
+      _catalog.map((category) => category.name).toList();
+  List<Color> get _colors =>
+      _catalog.map((category) => category.color).toList();
   final _form = GlobalKey<FormState>();
   final _description = TextEditingController();
   final _amount = TextEditingController();
   int? _category;
   DateTime? _date;
-  static const _icons = [
-    Icons.rice_bowl_rounded,
-    Icons.shopping_bag_rounded,
-    Icons.directions_bus_rounded,
-    Icons.bar_chart_rounded,
-    Icons.sports_esports_rounded,
-    Icons.add_circle_rounded,
-    Icons.favorite_rounded,
-    Icons.school_rounded,
-  ];
+  List<IconData> get _icons =>
+      _catalog.map((category) => category.icon).toList();
 
   @override
   void dispose() {
@@ -518,7 +522,7 @@ class _ExpenseFormState extends State<_ExpenseForm> {
     if (_form.currentState!.validate()) {
       Navigator.pop(
         context,
-        _Expense(
+        ExpenseRecord(
           _description.text.trim(),
           _category!,
           double.parse(double.parse(_amount.text.trim()).toStringAsFixed(2)),
@@ -542,7 +546,8 @@ class _ExpenseFormState extends State<_ExpenseForm> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.75),
+                color: AppPalette.of(context).surface,
+                border: Border.all(color: AppPalette.of(context).border),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Column(
@@ -552,8 +557,9 @@ class _ExpenseFormState extends State<_ExpenseForm> {
                     child: TextFormField(
                       key: const Key('expense-amount'),
                       controller: _amount,
-                      decoration: entryDecoration('0.00')
-                          .copyWith(prefixText: '\u20b1 '),
+                      decoration: entryDecoration(context, '0.00').copyWith(
+                        prefixText: '${AppDataScope.of(context).symbol} ',
+                      ),
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
@@ -562,45 +568,23 @@ class _ExpenseFormState extends State<_ExpenseForm> {
                   ),
                   EntryField(
                     label: 'Category',
-                    child: DropdownButtonFormField<int>(
-                      isExpanded: true,
+                    child: CategoryField(
                       key: ValueKey(_category),
-                      initialValue: _category,
-                      decoration: entryDecoration('Choose a category').copyWith(
-                        prefixIcon: Icon(
-                          _category == null
-                              ? Icons.work_rounded
-                              : _icons[_category!],
-                          color: _category == null
-                              ? const Color(0xFF8856DE)
-                              : _colors[_category!],
-                          size: 20,
-                        ),
-                      ),
-                      hint: const Text(
-                        'Choose a category',
-                        style: TextStyle(fontSize: 13, color: appMuted),
-                      ),
-                      items: List.generate(
-                        _categories.length,
-                        (i) => DropdownMenuItem(
-                          value: i,
-                          child: Text(
-                            _categories[i],
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ),
-                      ),
-                      onChanged: (v) => setState(() => _category = v),
-                      validator: (v) => v == null ? 'Choose a category' : null,
+                      kind: CategoryKind.expense,
+                      value: _category,
+                      onChanged: (value) => setState(() => _category = value),
                     ),
                   ),
+
                   EntryField(
                     label: 'Description',
                     child: TextFormField(
                       key: const Key('expense-description'),
                       controller: _description,
-                      decoration: entryDecoration('e.g. Lunch with friends'),
+                      decoration: entryDecoration(
+                        context,
+                        'e.g. Lunch with friends',
+                      ),
                       validator: (v) => v == null || v.trim().isEmpty
                           ? 'Enter a description'
                           : null,
@@ -624,7 +608,7 @@ class _ExpenseFormState extends State<_ExpenseForm> {
                           }
                         },
                         child: InputDecorator(
-                          decoration: entryDecoration('').copyWith(
+                          decoration: entryDecoration(context, '').copyWith(
                             suffixIcon: const Icon(
                               Icons.calendar_today_outlined,
                               size: 18,
@@ -633,9 +617,9 @@ class _ExpenseFormState extends State<_ExpenseForm> {
                           ),
                           child: Text(
                             _date == null ? 'Select date' : formatDate(_date!),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
-                              color: appMuted,
+                              color: AppPalette.of(context).muted,
                             ),
                           ),
                         ),

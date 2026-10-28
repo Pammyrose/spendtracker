@@ -1,124 +1,154 @@
 import 'package:flutter/material.dart';
 
-// The welcome page opens the dashboard without leaving an extra back-stack entry.
+import 'app_theme.dart';
+
+// Brand artwork stays pink regardless of the dashboard theme.
+const _brandPalette = AppPalette(
+  name: 'Brand',
+  accent: Color(0xFFFF5C83),
+  background: Color(0xFFFFF8F3),
+  surface: Color(0xFFFFDFE6),
+  soft: Color(0xFFFFE4E9),
+  border: Color(0xFFE9577B),
+  heroStart: Color(0xFFFFCAD8),
+  heroEnd: Color(0xFFFF80A1),
+  ink: Color(0xFF192134),
+);
+
+// The welcome page opens its destination without leaving an extra back-stack entry.
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key, required this.destination});
   final Widget destination;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: CustomPaint(
-        painter: const _WelcomeBackground(),
-        child: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 30),
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: Center(
-                        // Keep the logo accessible on short landscape screens.
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.symmetric(vertical: 24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Semantics(
-                                image: true,
-                                label: 'Pink wallet with a gold coin',
-                                child: SizedBox(
-                                  width: 128,
-                                  height: 128,
-                                  child: CustomPaint(painter: _WalletPainter()),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              const FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text.rich(
-                                  TextSpan(
-                                    children: [
-                                      TextSpan(
-                                        text: 'Spend',
-                                        style: TextStyle(
-                                          color: Color(0xFF192134),
-                                        ),
-                                      ),
-                                      TextSpan(
-                                        text: 'Tracker',
-                                        style: TextStyle(
-                                          color: Color(0xFFFF5C83),
-                                        ),
-                                      ),
-                                    ],
+    const palette = _brandPalette;
+    return Theme(
+      data: ThemeData.light().copyWith(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: palette.accent,
+          primary: palette.accent,
+        ),
+      ),
+      child: Scaffold(
+        body: CustomPaint(
+          key: const Key('welcome-background'),
+          painter: _WelcomeBackground(palette),
+          child: SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 30),
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: Center(
+                          // Keep the logo accessible on short landscape screens.
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.symmetric(vertical: 24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Semantics(
+                                  image: true,
+                                  label: 'Wallet with a gold coin',
+                                  child: SizedBox(
+                                    width: 128,
+                                    height: 128,
+                                    child: CustomPaint(
+                                      key: const Key('welcome-wallet'),
+                                      painter: _WalletPainter(palette),
+                                    ),
                                   ),
+                                ),
+                                const SizedBox(height: 12),
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text.rich(
+                                    TextSpan(
+                                      children: [
+                                        TextSpan(
+                                          text: 'Spend',
+                                          style: TextStyle(color: palette.ink),
+                                        ),
+                                        TextSpan(
+                                          text: 'Tracker',
+                                          style: TextStyle(
+                                            color: palette.accent,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    style: TextStyle(
+                                      fontSize: 36,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: -1.3,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                const Text(
+                                  'Track today.\nPlan for tomorrow.',
+                                  textAlign: TextAlign.center,
                                   style: TextStyle(
-                                    fontSize: 36,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: -1.3,
+                                    color: Color(0xFF697B90),
+                                    fontSize: 15,
+                                    height: 1.4,
                                   ),
                                 ),
-                              ),
-                              const SizedBox(height: 14),
-                              const Text(
-                                'Track today.\nPlan for tomorrow.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Color(0xFF697B90),
-                                  fontSize: 15,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 36, top: 12),
-                      child: Container(
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(28),
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFFFF698C), Color(0xFFEF5C80)],
-                          ),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x20FF5C83),
-                              blurRadius: 18,
-                              offset: Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: FilledButton(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            shadowColor: Colors.transparent,
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size.fromHeight(52),
-                            shape: const StadiumBorder(),
-                          ),
-                          onPressed: () => Navigator.of(context)
-                              .pushReplacement(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => destination,
-                                ),
-                              ),
-                          child: const Text(
-                            'Get Started',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
+                              ],
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 36, top: 12),
+                        child: Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(28),
+                            gradient: LinearGradient(
+                              colors: [Color(0xFFFF698C), Color(0xFFEF5C80)],
+                            ),
+                            boxShadow: palette.name == 'White'
+                                ? const []
+                                : [
+                                    BoxShadow(
+                                      color: palette.accent.withValues(
+                                        alpha: .16,
+                                      ),
+                                      blurRadius: 18,
+                                      offset: Offset(0, 6),
+                                    ),
+                                  ],
+                          ),
+                          child: FilledButton(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              shadowColor: Colors.transparent,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size.fromHeight(52),
+                              shape: const StadiumBorder(),
+                            ),
+                            onPressed: () => Navigator.of(context)
+                                .pushReplacement(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => destination,
+                                  ),
+                                ),
+                            child: const Text(
+                              'Get Started',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -130,8 +160,52 @@ class WelcomeScreen extends StatelessWidget {
 }
 
 // Paint decorative shapes directly, so the background adapts to any screen size.
+// Reuse the original pink artwork on authentication screens, with a light
+// backing so the logo remains readable when the app uses a dark theme.
+class SpendTrackerLogo extends StatelessWidget {
+  const SpendTrackerLogo({super.key});
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+    decoration: BoxDecoration(
+      color: _brandPalette.background,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 76,
+          height: 76,
+          child: CustomPaint(painter: _WalletPainter(_brandPalette)),
+        ),
+        Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: 'Spend',
+                style: TextStyle(color: _brandPalette.ink),
+              ),
+              TextSpan(
+                text: 'Tracker',
+                style: TextStyle(color: _brandPalette.accent),
+              ),
+            ],
+          ),
+          style: const TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -1,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 class _WelcomeBackground extends CustomPainter {
-  const _WelcomeBackground();
+  const _WelcomeBackground(this.palette);
+  final AppPalette palette;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -145,10 +219,10 @@ class _WelcomeBackground extends CustomPainter {
           colors: [Color(0xFFFFF8F3), Color(0xFFFFF6F7)],
         ).createShader(bounds),
     );
+    if (palette.name == 'White') return;
     canvas.save();
     canvas.clipRect(bounds);
-    final pink = Paint()
-      ..color = const Color(0xFFFFE4E9).withValues(alpha: 0.68);
+    final pink = Paint()..color = palette.soft.withValues(alpha: 0.68);
     canvas.drawOval(
       Rect.fromLTWH(
         size.width * .74,
@@ -221,12 +295,14 @@ class _WelcomeBackground extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _WelcomeBackground oldDelegate) => false;
+  bool shouldRepaint(covariant _WelcomeBackground oldDelegate) =>
+      oldDelegate.palette != palette;
 }
 
 // A vector wallet keeps the illustration sharp without downloading image assets.
 class _WalletPainter extends CustomPainter {
-  const _WalletPainter();
+  const _WalletPainter(this.palette);
+  final AppPalette palette;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -237,7 +313,7 @@ class _WalletPainter extends CustomPainter {
       const Offset(69, 36),
       21,
       Paint()
-        ..shader = const LinearGradient(
+        ..shader = LinearGradient(
           colors: [Color(0xFFFFD782), Color(0xFFFFAB43)],
         ).createShader(coinRect),
     );
@@ -252,7 +328,7 @@ class _WalletPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
     canvas.drawLine(const Offset(72, 25), const Offset(65, 46), coinMark);
     final seam = Paint()
-      ..color = const Color(0xFFE9577B)
+      ..color = palette.border
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;
     final back = Path()
@@ -270,17 +346,17 @@ class _WalletPainter extends CustomPainter {
     );
     canvas.drawShadow(
       Path()..addRRect(wallet),
-      const Color(0x40D84B70),
+      palette.accent.withValues(alpha: .18),
       5,
       false,
     );
     canvas.drawRRect(
       wallet,
       Paint()
-        ..shader = const LinearGradient(
+        ..shader = LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFFFCAD8), Color(0xFFFF80A1)],
+          colors: [palette.heroStart, palette.heroEnd],
         ).createShader(wallet.outerRect),
     );
     canvas.drawRRect(wallet, seam);
@@ -288,7 +364,7 @@ class _WalletPainter extends CustomPainter {
       const Offset(33, 62),
       const Offset(98, 62),
       Paint()
-        ..color = const Color(0xFFFFDFE6)
+        ..color = palette.surface
         ..strokeWidth = 2,
     );
     final clasp = RRect.fromRectAndRadius(
@@ -311,5 +387,6 @@ class _WalletPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _WalletPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _WalletPainter oldDelegate) =>
+      oldDelegate.palette != palette;
 }

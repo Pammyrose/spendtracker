@@ -1,86 +1,12 @@
 import 'package:flutter/material.dart';
 
+import 'app_theme.dart';
+
 import 'entry_widgets.dart';
-
-const _billIcons = [
-  Icons.language_rounded,
-  Icons.bolt_rounded,
-  Icons.water_drop_rounded,
-  Icons.movie_rounded,
-  Icons.phone_android_rounded,
-  Icons.home_work_rounded,
-];
-const _billColors = [
-  Color(0xFF087BFF),
-  Color(0xFFFF9A1F),
-  Color(0xFF087BFF),
-  Color(0xFFFF426B),
-  Color(0xFF5366FF),
-  Color(0xFFFF8C32),
-];
-
-class Bill {
-  Bill({
-    required this.name,
-    required this.amount,
-    required this.due,
-    this.icon = 0,
-    this.repeat = 'Monthly',
-    this.reminder = '3 days before',
-    this.paid = false,
-  });
-  final String name, repeat, reminder;
-  final double amount;
-  final DateTime due;
-  final int icon;
-  bool paid;
-  int get daysLeft {
-    final now = DateTime.now();
-    // Compare calendar dates, rather than rounding a partial day.
-    return DateTime.utc(
-      due.year,
-      due.month,
-      due.day,
-    ).difference(DateTime.utc(now.year, now.month, now.day)).inDays;
-  }
-}
-
-// The home preview and Bills tab listen to the same list.
-class BillsController extends ChangeNotifier {
-  BillsController() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final names = [
-      'Internet',
-      'Electricity',
-      'Water',
-      'Netflix',
-      'Phone Plan',
-      'Rent',
-    ];
-    final amounts = [1500.0, 2000.0, 800.0, 549.0, 999.0, 8000.0];
-    final days = [5, 10, 15, 18, 20, 22];
-    bills = List.generate(
-      names.length,
-      (i) => Bill(
-        name: names[i],
-        amount: amounts[i],
-        due: today.add(Duration(days: days[i])),
-        icon: i,
-      ),
-    );
-  }
-  late final List<Bill> bills;
-  void add(Bill bill) {
-    bills.add(bill);
-    notifyListeners();
-  }
-
-  void togglePaid(Bill bill) {
-    bill.paid = !bill.paid;
-    notifyListeners();
-  }
-}
+import 'app_data.dart';
+import 'category_catalog.dart';
+import 'category_picker.dart';
+import 'payment_plan_page.dart';
 
 class BillsPage extends StatefulWidget {
   const BillsPage({super.key, required this.controller});
@@ -95,7 +21,11 @@ class _BillsPageState extends State<BillsPage> {
   Future<void> _add() async {
     final bill = await Navigator.push<Bill>(
       context,
-      MaterialPageRoute(builder: (_) => const AddBillPage()),
+      MaterialPageRoute(
+        builder: (_) => AddBillPage(
+          defaultReminder: AppDataScope.of(context).billReminderTime,
+        ),
+      ),
     );
     if (bill != null && mounted) {
       widget.controller.add(bill);
@@ -113,12 +43,19 @@ class _BillsPageState extends State<BillsPage> {
                 (b) => switch (_filter) {
                   'Paid' => b.paid,
                   'Unpaid' => !b.paid,
-                  'Due Soon' => !b.paid && b.daysLeft <= 7,
+                  'Due Soon' =>
+                    !b.paid &&
+                        (b.daysLeft <= 7 ||
+                            b.paymentPlanAt != null &&
+                                b.paymentPlanAt!
+                                        .difference(DateTime.now())
+                                        .inDays <=
+                                    7),
                   _ => true,
                 },
               )
               .toList()
-            ..sort((a, b) => a.due.compareTo(b.due));
+            ..sort((a, b) => a.nextActionAt.compareTo(b.nextActionAt));
       return Column(
         children: [
           Padding(
@@ -135,8 +72,8 @@ class _BillsPageState extends State<BillsPage> {
                   tooltip: 'Add bill',
                   onPressed: _add,
                   style: IconButton.styleFrom(
-                    backgroundColor: appPink,
-                    foregroundColor: Colors.white,
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
                   ),
                   icon: const Icon(Icons.add),
                 ),
@@ -155,11 +92,11 @@ class _BillsPageState extends State<BillsPage> {
                         onPressed: () => setState(() => _filter = filter),
                         style: TextButton.styleFrom(
                           backgroundColor: _filter == filter
-                              ? appPink
-                              : const Color(0xFFECF0F5),
+                              ? Theme.of(context).colorScheme.primary
+                              : AppPalette.of(context).soft,
                           foregroundColor: _filter == filter
-                              ? Colors.white
-                              : appMuted,
+                              ? Theme.of(context).colorScheme.onPrimary
+                              : AppPalette.of(context).muted,
                           minimumSize: const Size(0, 36),
                           padding: const EdgeInsets.symmetric(horizontal: 2),
                           shape: const StadiumBorder(),
@@ -181,8 +118,10 @@ class _BillsPageState extends State<BillsPage> {
                     child: Text(
                       _filter == 'Paid'
                           ? 'No paid bills yet.'
+                          : widget.controller.bills.isEmpty
+                          ? 'No bills yet. Tap + to add your first bill.'
                           : 'No bills in this filter.',
-                      style: const TextStyle(color: appMuted),
+                      style: TextStyle(color: AppPalette.of(context).muted),
                     ),
                   )
                 : ListView.separated(
@@ -205,37 +144,136 @@ class _BillsPageState extends State<BillsPage> {
 void _showBill(BuildContext context, Bill bill, BillsController controller) {
   showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
     useSafeArea: true,
-    builder: (context) => SafeArea(
-      child: Padding(
+    builder: (_) => BillDetailsSheet(bill: bill, controller: controller),
+  );
+}
+
+class BillDetailsSheet extends StatelessWidget {
+  const BillDetailsSheet({
+    super.key,
+    required this.bill,
+    required this.controller,
+  });
+  final Bill bill;
+  final BillsController controller;
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * .85,
+      ),
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              bill.name,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              formatMoney(bill.amount),
-              style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 12),
-            Text('Due ${formatDate(bill.due)}'),
-            Text('Repeat: ${bill.repeat}'),
-            Text('Reminder preference: ${bill.reminder}'),
-            const SizedBox(height: 20),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: appPink),
-              onPressed: () {
-                controller.togglePaid(bill);
-                Navigator.pop(context);
-              },
-              child: Text(bill.paid ? 'Mark as unpaid' : 'Mark as paid'),
-            ),
-          ],
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                bill.name,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                formatMoney(context, bill.amount),
+                style: const TextStyle(
+                  fontSize: 25,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text('Original due: ${formatDate(bill.due)}'),
+              Text('Bill repeats: ${bill.repeat}'),
+              Text('Reminder preference: ${bill.reminder}'),
+              if (bill.notes.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text(
+                  'Notes',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                Text(bill.notes),
+              ],
+              if (bill.paymentReason.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppPalette.of(context).soft,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Payment note',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(bill.paymentReason),
+                      if (bill.paymentPlanAt != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Planned payment: ${paymentTime(context, bill.paymentPlanAt!)}',
+                        ),
+                        Text(
+                          bill.paid
+                              ? 'Reminders stopped (paid)'
+                              : 'Follow-up: ${bill.followUpRepeat}${bill.followUpRepeat == 'Once' ? '' : ' until paid'}',
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              FilledButton(
+                onPressed: () {
+                  controller.togglePaid(bill);
+                  Navigator.pop(context);
+                },
+                child: Text(bill.paid ? 'Mark as unpaid' : 'Mark as paid'),
+              ),
+              if (!bill.paid) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: const Key('pay-later'),
+                  icon: const Icon(Icons.edit_note_rounded),
+                  label: Text(
+                    bill.paymentPlanAt == null
+                        ? 'Pay later / Add reason'
+                        : 'Edit payment plan',
+                  ),
+                  onPressed: () async {
+                    final message = await Navigator.push<String>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            PaymentPlanPage(bill: bill, controller: controller),
+                      ),
+                    );
+                    if (message != null && context.mounted) {
+                      final messenger = ScaffoldMessenger.of(context);
+                      Navigator.pop(context);
+                      messenger
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(SnackBar(content: Text(message)));
+                    }
+                  },
+                ),
+                if (bill.paymentPlanAt != null)
+                  TextButton(
+                    onPressed: () => controller.removePaymentPlan(bill),
+                    child: const Text('Remove payment plan'),
+                  ),
+              ],
+            ],
+          ),
         ),
       ),
     ),
@@ -255,7 +293,7 @@ class BillsPreview extends StatelessWidget {
     animation: controller,
     builder: (context, _) {
       final bills = controller.bills.where((b) => !b.paid).toList()
-        ..sort((a, b) => a.due.compareTo(b.due));
+        ..sort((a, b) => a.nextActionAt.compareTo(b.nextActionAt));
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -269,17 +307,19 @@ class BillsPreview extends StatelessWidget {
               ),
               TextButton(
                 onPressed: onSeeAll,
-                style: TextButton.styleFrom(foregroundColor: appPink),
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.primary,
+                ),
                 child: const Text('See All'),
               ),
             ],
           ),
           if (bills.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(16),
               child: Text(
                 'No upcoming bills.',
-                style: TextStyle(color: appMuted),
+                style: TextStyle(color: AppPalette.of(context).muted),
               ),
             ),
           for (final bill in bills.take(3))
@@ -303,17 +343,22 @@ class BillCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final days = bill.daysLeft;
-    final urgent = days <= 7;
-    final color = _billColors[bill.icon];
+    final deferred = !bill.paid && bill.paymentPlanAt != null;
+    final urgent = deferred
+        ? !bill.paymentPlanAt!.isAfter(DateTime.now())
+        : days <= 7;
+    final color = categoryIcons[bill.icon].color;
     final status = bill.paid
         ? 'Paid'
+        : deferred
+        ? (urgent ? 'Reminder due' : 'Pay later')
         : days < 0
         ? '${-days} days overdue'
         : days == 0
         ? 'Due today'
         : '$days days left';
     return Material(
-      color: Colors.white,
+      color: AppPalette.of(context).surface,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
@@ -325,7 +370,11 @@ class BillCard extends StatelessWidget {
               CircleAvatar(
                 radius: 23,
                 backgroundColor: color.withValues(alpha: 0.09),
-                child: Icon(_billIcons[bill.icon], color: color, size: 30),
+                child: Icon(
+                  categoryIcons[bill.icon].icon,
+                  color: color,
+                  size: 30,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -340,7 +389,7 @@ class BillCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      formatMoney(bill.amount),
+                      formatMoney(context, bill.amount),
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
@@ -348,38 +397,78 @@ class BillCard extends StatelessWidget {
                     ),
                     Text(
                       'Due ${formatDate(bill.due)}',
-                      style: const TextStyle(fontSize: 10, color: appMuted),
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: AppPalette.of(context).muted,
+                      ),
                     ),
+                    if (deferred) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Pay on ${formatDate(bill.paymentPlanAt!)}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: AppPalette.of(context).muted,
+                        ),
+                      ),
+                      Tooltip(
+                        message: bill.paymentReason,
+                        child: Text(
+                          bill.paymentReason,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 10),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
               const SizedBox(width: 6),
               Flexible(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: bill.paid
-                        ? const Color(0xFFD9F8EF)
-                        : urgent
-                        ? const Color(0xFFFFE4EB)
-                        : days <= 10
-                        ? const Color(0xFFFFEDD9)
-                        : const Color(0xFFEAF0F5),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      color: bill.paid
-                          ? const Color(0xFF008C69)
+                // Put the badge at the card's right edge, within its padding.
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color:
+                          AppPalette.of(context).brightness == Brightness.dark
+                          ? AppPalette.of(context).soft
+                          : bill.paid
+                          ? const Color(0xFFD9F8EF)
+                          : deferred
+                          ? const Color(0xFFFFEDD9)
                           : urgent
-                          ? appPink
-                          : appMuted,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
+                          ? const Color(0xFFFFE4EB)
+                          : days <= 10
+                          ? const Color(0xFFFFEDD9)
+                          : const Color(0xFFEAF0F5),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      status,
+                      style: TextStyle(
+                        color: bill.paid
+                            ? AppPalette.of(context).brightness ==
+                                      Brightness.dark
+                                  ? const Color(0xFF52D8B0)
+                                  : const Color(0xFF008C69)
+                            : urgent
+                            ? Theme.of(context).colorScheme.primary
+                            : deferred
+                            ? (AppPalette.of(context).brightness ==
+                                      Brightness.dark
+                                  ? const Color(0xFFFFD69B)
+                                  : const Color(0xFF9B5B23))
+                            : AppPalette.of(context).muted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
@@ -393,7 +482,8 @@ class BillCard extends StatelessWidget {
 }
 
 class AddBillPage extends StatefulWidget {
-  const AddBillPage({super.key});
+  const AddBillPage({super.key, this.defaultReminder = '3 days before'});
+  final String defaultReminder;
   @override
   State<AddBillPage> createState() => _AddBillPageState();
 }
@@ -402,15 +492,18 @@ class _AddBillPageState extends State<AddBillPage> {
   final _form = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _amount = TextEditingController();
+  final _notes = TextEditingController();
   DateTime? _due;
   String _repeat = 'Monthly';
-  String _reminder = '3 days before';
+  late String _reminder = widget.defaultReminder;
   int _icon = 0;
+  int? _category;
 
   @override
   void dispose() {
     _name.dispose();
     _amount.dispose();
+    _notes.dispose();
     super.dispose();
   }
 
@@ -420,11 +513,13 @@ class _AddBillPageState extends State<AddBillPage> {
         context,
         Bill(
           name: _name.text.trim(),
+          notes: _notes.text.trim(),
           amount: double.parse(
             double.parse(_amount.text.trim()).toStringAsFixed(2),
           ),
           due: _due!,
           icon: _icon,
+          category: _category,
           repeat: _repeat,
           reminder: _reminder,
         ),
@@ -443,7 +538,8 @@ class _AddBillPageState extends State<AddBillPage> {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.75),
+            color: AppPalette.of(context).surface,
+            border: Border.all(color: AppPalette.of(context).border),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Column(
@@ -453,7 +549,7 @@ class _AddBillPageState extends State<AddBillPage> {
                 child: TextFormField(
                   key: const Key('bill-name'),
                   controller: _name,
-                  decoration: entryDecoration('e.g. Internet'),
+                  decoration: entryDecoration(context, 'e.g. Internet'),
                   validator: (v) => v == null || v.trim().isEmpty
                       ? 'Enter a bill name'
                       : null,
@@ -464,8 +560,10 @@ class _AddBillPageState extends State<AddBillPage> {
                 child: TextFormField(
                   key: const Key('bill-amount'),
                   controller: _amount,
-                  decoration: entryDecoration('0.00')
-                      .copyWith(prefixText: '\u20b1 '),
+                  decoration: entryDecoration(
+                    context,
+                    '0.00',
+                  ).copyWith(prefixText: '${AppDataScope.of(context).symbol} '),
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
@@ -492,7 +590,7 @@ class _AddBillPageState extends State<AddBillPage> {
                       }
                     },
                     child: InputDecorator(
-                      decoration: entryDecoration('').copyWith(
+                      decoration: entryDecoration(context, '').copyWith(
                         errorText: field.errorText,
                         suffixIcon: const Icon(
                           Icons.calendar_today_outlined,
@@ -501,7 +599,10 @@ class _AddBillPageState extends State<AddBillPage> {
                       ),
                       child: Text(
                         _due == null ? 'Select date' : formatDate(_due!),
-                        style: const TextStyle(color: appMuted, fontSize: 13),
+                        style: TextStyle(
+                          color: AppPalette.of(context).muted,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
                   ),
@@ -512,7 +613,7 @@ class _AddBillPageState extends State<AddBillPage> {
                 child: DropdownButtonFormField<String>(
                   isExpanded: true,
                   initialValue: _repeat,
-                  decoration: entryDecoration('').copyWith(
+                  decoration: entryDecoration(context, '').copyWith(
                     prefixIcon: const Icon(Icons.sync_rounded, size: 20),
                   ),
                   items: ['Never', 'Weekly', 'Monthly', 'Yearly']
@@ -527,61 +628,49 @@ class _AddBillPageState extends State<AddBillPage> {
                 ),
               ),
               EntryField(
+                label: 'Category (Optional)',
+                child: CategoryField(
+                  key: const Key('bill-category'),
+                  kind: CategoryKind.bill,
+                  value: _category,
+                  isRequired: false,
+                  onChanged: (value) => setState(() {
+                    _category = value;
+                    _icon = AppDataScope.of(context)
+                        .billCategories[value]
+                        .iconIndex;
+                  }),
+                ),
+              ),
+              EntryField(
                 label: 'Icon',
                 child: InkWell(
+                  key: const Key('bill-icon'),
                   onTap: () async {
-                    final choice = await showModalBottomSheet<int>(
-                      context: context,
-                      useSafeArea: true,
-                      builder: (context) => SafeArea(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Wrap(
-                            spacing: 12,
-                            runSpacing: 12,
-                            children: List.generate(
-                              _billIcons.length,
-                              (i) => IconButton(
-                                tooltip: [
-                                  'Internet',
-                                  'Electricity',
-                                  'Water',
-                                  'Streaming',
-                                  'Phone',
-                                  'Rent',
-                                ][i],
-                                onPressed: () => Navigator.pop(context, i),
-                                icon: Icon(
-                                  _billIcons[i],
-                                  color: _billColors[i],
-                                  size: 30,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
+                    final choice = await chooseIcon(context, selected: _icon);
                     if (choice != null && mounted) {
                       setState(() => _icon = choice);
                     }
                   },
                   child: InputDecorator(
-                    decoration: entryDecoration('').copyWith(
+                    decoration: entryDecoration(context, '').copyWith(
                       suffixIcon: const Icon(Icons.chevron_right_rounded),
                     ),
                     child: Row(
                       children: [
                         Icon(
-                          _billIcons[_icon],
-                          color: _billColors[_icon],
+                          categoryIcons[_icon].icon,
+                          color: categoryIcons[_icon].color,
                           size: 22,
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            'Choose an icon',
-                            style: TextStyle(color: appMuted, fontSize: 13),
+                            categoryIcons[_icon].label,
+                            style: TextStyle(
+                              color: AppPalette.of(context).muted,
+                              fontSize: 13,
+                            ),
                           ),
                         ),
                       ],
@@ -590,34 +679,37 @@ class _AddBillPageState extends State<AddBillPage> {
                 ),
               ),
               EntryField(
+                label: 'Notes (Optional)',
+                child: TextFormField(
+                  key: const Key('bill-notes'),
+                  controller: _notes,
+                  maxLength: 1000,
+                  maxLines: 2,
+                  decoration: entryDecoration(
+                    context,
+                    'e.g. Contact the landlord before paying',
+                  ),
+                ),
+              ),
+              EntryField(
                 label: 'Remind Me',
                 child: DropdownButtonFormField<String>(
                   isExpanded: true,
                   initialValue: _reminder,
-                  decoration: entryDecoration('').copyWith(
+                  decoration: entryDecoration(context, '').copyWith(
                     prefixIcon: const Icon(
                       Icons.notifications_none_rounded,
                       size: 20,
                     ),
                   ),
-                  items:
-                      [
-                            'Never',
-                            'On due date',
-                            '1 day before',
-                            '3 days before',
-                            '7 days before',
-                          ]
-                          .map(
-                            (v) => DropdownMenuItem(
-                              value: v,
-                              child: Text(
-                                v,
-                                style: const TextStyle(fontSize: 13),
-                              ),
-                            ),
-                          )
-                          .toList(),
+                  items: ['Never', ...reminderTimes]
+                      .map(
+                        (v) => DropdownMenuItem(
+                          value: v,
+                          child: Text(v, style: const TextStyle(fontSize: 13)),
+                        ),
+                      )
+                      .toList(),
                   onChanged: (v) => setState(() => _reminder = v!),
                 ),
               ),

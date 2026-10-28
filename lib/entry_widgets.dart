@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import 'app_theme.dart';
+
+import 'app_data.dart';
+
 const appPink = Color(0xFFFF5C83);
-const appMuted = Color(0xFF788396);
 
 // Shared form layout: scrollable fields and a save button above the safe area.
 class EntryPage extends StatelessWidget {
@@ -19,13 +22,7 @@ class EntryPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     body: Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFFF2F6), Color(0xFFFAFCFF)],
-        ),
-      ),
+      decoration: BoxDecoration(color: AppPalette.of(context).background),
       child: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -67,8 +64,10 @@ class EntryPage extends StatelessWidget {
                     height: 48,
                     child: FilledButton(
                       style: FilledButton.styleFrom(
-                        backgroundColor: appPink,
-                        foregroundColor: Colors.white,
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        foregroundColor: Theme.of(context)
+                            .colorScheme
+                            .onPrimary,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -109,29 +108,30 @@ class EntryField extends StatelessWidget {
   );
 }
 
-InputDecoration entryDecoration(String hint) => InputDecoration(
-  hintText: hint,
-  hintStyle: const TextStyle(color: appMuted, fontSize: 13),
-  filled: true,
-  fillColor: Colors.white.withValues(alpha: 0.7),
-  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-  border: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(9),
-    borderSide: const BorderSide(color: Color(0xFFE3E8EF)),
-  ),
-  enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(9),
-    borderSide: const BorderSide(color: Color(0xFFE3E8EF)),
-  ),
-);
+InputDecoration entryDecoration(BuildContext context, String hint) =>
+    InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(color: AppPalette.of(context).muted, fontSize: 13),
+      filled: true,
+      fillColor: AppPalette.of(context).surface,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(9),
+        borderSide: BorderSide(color: AppPalette.of(context).border),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(9),
+        borderSide: BorderSide(color: AppPalette.of(context).border),
+      ),
+    );
 
-String formatMoney(double amount) {
+String formatMoney(BuildContext context, double amount) {
   final parts = amount.toStringAsFixed(2).split('.');
   final whole = parts.first.replaceAllMapped(
     RegExp(r'(\d)(?=(\d{3})+$)'),
     (m) => '${m[1]},',
   );
-  return '\u20b1 $whole.${parts.last}';
+  return '${AppDataScope.of(context).symbol} $whole.${parts.last}';
 }
 
 String? validateAmount(String? text) {
