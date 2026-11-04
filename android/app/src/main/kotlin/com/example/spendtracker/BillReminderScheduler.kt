@@ -15,9 +15,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.max
 
-// Inexact, user-requested alarms continue after the app closes and are restored on reboot.
+// User-requested alarms survive app closure; exact timing needs Android permission.
 object BillReminderScheduler {
-    private const val channelId = "payment_followups"
+    const val channelId = "payment_followups_v2"
     private const val plansKey = "payment_reminder_plans"
     private const val day = 86_400_000L
 
@@ -28,7 +28,12 @@ object BillReminderScheduler {
     fun createChannel(context: Context) {
         ExpenseAlertNotifier.createChannel(context)
         if (Build.VERSION.SDK_INT >= 26) {
-            notificationManager(context).createNotificationChannel(NotificationChannel(channelId, "Payment follow-ups", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            val previous = notificationManager(context).getNotificationChannel("payment_followups")
+            // Keep disabled or silent channels disabled/silent when upgrading banners.
+            val importance = if (previous != null && previous.importance < NotificationManager.IMPORTANCE_DEFAULT) previous.importance else NotificationManager.IMPORTANCE_HIGH
+            notificationManager(context).createNotificationChannel(NotificationChannel(channelId, "Payment follow-ups", importance).apply {
+                enableVibration(previous?.shouldVibrate() ?: true)
+                if (previous != null) setSound(previous.sound, previous.audioAttributes)
                 description = "Reminders for bills you plan to pay later"
             })
         }
@@ -52,10 +57,19 @@ object BillReminderScheduler {
         return max(aligned, lastFired + interval)
     }
 
+    fun timingAllowed(context: Context): Boolean = Build.VERSION.SDK_INT < 31 || alarmManager(context).canScheduleExactAlarms()
+
     private fun schedule(context: Context, plan: JSONObject) {
         if (!allowed(context)) return
         val next = nextTrigger(plan.getLong("at"), plan.optLong("lastFired"), plan.getLong("interval"), System.currentTimeMillis()) ?: return
-        alarmManager(context).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next, alarmIntent(context, plan.getInt("id")))
+        val pending = alarmIntent(context, plan.getInt("id"))
+        if (timingAllowed(context)) {
+            try {
+                alarmManager(context).setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next, pending)
+                return
+            } catch (_: SecurityException) { /* Permission can change while scheduling. */ }
+        }
+        alarmManager(context).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next, pending)
     }
 
     fun sync(context: Context) {
@@ -105,6 +119,35 @@ object BillReminderScheduler {
         for (i in 0 until newPlans.length()) schedule(context, newPlans.getJSONObject(i))
     }
 
+    // A preview uses a separate ID and never changes a bill or delivery history.
+    fun testNotification(context: Context): Boolean {
+        createChannel(context)
+        if (!allowed(context)) return false
+        post(context, 9_001, "SpendTracker test reminder", "Pay-later reminders will appear here when your saved payment time arrives.")
+        return true
+    }
+
+    private fun post(context: Context, id: Int, title: String, body: String) {
+        val launch = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val open = PendingIntent.getActivity(context, id, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        @Suppress("DEPRECATION")
+        val notification = (if (Build.VERSION.SDK_INT >= 26) Notification.Builder(context, channelId) else Notification.Builder(context))
+            .setSmallIcon(R.drawable.ic_notification_wallet)
+            .setContentTitle(title)
+            .setContentText(body.trim())
+            .setStyle(Notification.DecoratedCustomViewStyle())
+            .setCustomContentView(NotificationBranding.content(context, title, body))
+            .setCustomBigContentView(NotificationBranding.content(context, title, body, true))
+            .setCustomHeadsUpContentView(NotificationBranding.content(context, title, body))
+            .setCategory(Notification.CATEGORY_REMINDER)
+            .setPriority(Notification.PRIORITY_HIGH)
+            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        notificationManager(context).notify(id, notification)
+    }
+
     fun deliver(context: Context, id: Int) {
         val plans = readPlans(context)
         val plan = (0 until plans.length()).map { plans.getJSONObject(it) }.firstOrNull { it.getInt("id") == id } ?: return
@@ -113,20 +156,7 @@ object BillReminderScheduler {
         val interval = plan.getLong("interval")
         val last = plan.optLong("lastFired")
         if (now < plan.getLong("at") || last > 0 && (interval == 0L || now < last + interval - 60_000L)) { schedule(context, plan); return }
-        val launch = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        val open = PendingIntent.getActivity(context, id, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val body = "This bill is still unpaid. ${plan.optString("reason")}".trim()
-        @Suppress("DEPRECATION")
-        val notification = (if (Build.VERSION.SDK_INT >= 26) Notification.Builder(context, channelId) else Notification.Builder(context))
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("Payment reminder: ${plan.getString("name")}")
-            .setContentText(body)
-            .setStyle(Notification.BigTextStyle().bigText(body))
-            .setVisibility(Notification.VISIBILITY_PRIVATE)
-            .setContentIntent(open)
-            .setAutoCancel(true)
-            .build()
-        notificationManager(context).notify(id, notification)
+        post(context, id, "Payment reminder: "+plan.getString("name"), "This bill is still unpaid. "+plan.optString("reason"))
         plan.put("lastFired", now)
         preferences(context).edit().putString(plansKey, plans.toString()).commit()
         if (interval > 0) schedule(context, plan)
@@ -142,6 +172,6 @@ class PaymentReminderReceiver : BroadcastReceiver() {
 
 class PaymentReminderBootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action in listOf(Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED)) BillReminderScheduler.sync(context)
+        if (intent.action in listOf(AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED, Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED)) BillReminderScheduler.sync(context)
     }
 }

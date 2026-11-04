@@ -68,6 +68,97 @@ List<BillAlert> billAlerts(Iterable<Bill> bills, DateTime now) {
   return alerts;
 }
 
+// Future reminders stay off the badge until their scheduled time.
+int unreadNotificationCount(AppData data, DateTime now) {
+  final read = data.notificationsReadAt;
+  bool unseen(DateTime at) => read == null || at.isAfter(read);
+  var count = data.transactionActivity
+      .where((entry) => unseen(entry.recordedAt))
+      .length;
+  if (data.notificationsEnabled && data.billReminders) {
+    for (final alert in billAlerts(data.bills.bills, now)) {
+      var at = alert.at;
+      final days = switch (alert.bill.followUpRepeat) {
+        'Daily' => 1,
+        'Every 2 days' => 2,
+        'Weekly' => 7,
+        _ => 0,
+      };
+      if (alert.bill.paymentPlanAt != null && days > 0) {
+        final period = Duration(days: days).inMilliseconds;
+        at = at.add(
+          Duration(
+            milliseconds:
+                (now.difference(at).inMilliseconds ~/ period) * period,
+          ),
+        );
+      }
+      if (unseen(at)) count++;
+    }
+  }
+  if (data.expenseLimitReached(now) &&
+      (unseen(DateTime(now.year, now.month)) ||
+          data.transactionActivity.any(
+            (entry) => entry.kind == 'expenseAdded' && unseen(entry.recordedAt),
+          ))) {
+    count++;
+  }
+  return count;
+}
+
+class NotificationBell extends StatefulWidget {
+  const NotificationBell({super.key});
+  @override
+  State<NotificationBell> createState() => _NotificationBellState();
+}
+
+class _NotificationBellState extends State<NotificationBell>
+    with WidgetsBindingObserver {
+  Timer? _timer;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _timer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => setState(() {}),
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final count = unreadNotificationCount(
+      AppDataScope.of(context),
+      DateTime.now(),
+    );
+    return IconButton(
+      tooltip: 'Notifications',
+      icon: Badge(
+        key: const Key('notification-badge'),
+        isLabelVisible: count > 0,
+        label: Text(count > 99 ? '99+' : '$count'),
+        child: const Icon(Icons.notifications_none_rounded),
+      ),
+      onPressed: () => Navigator.push(
+        context,
+        MaterialPageRoute<void>(builder: (_) => const NotificationsInboxPage()),
+      ),
+    );
+  }
+}
+
 class NotificationsInboxPage extends StatefulWidget {
   const NotificationsInboxPage({super.key});
   @override
@@ -106,6 +197,13 @@ class _NotificationsInboxPageState extends State<NotificationsInboxPage>
     final alerts = billAlerts(data.bills.bills, now);
     final expenseAlert = data.expenseLimitReached(now);
     final spent = data.spendingThrough(now);
+    if (unreadNotificationCount(data, now) > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && ModalRoute.of(context)?.isCurrent == true) {
+          data.markNotificationsRead(now);
+        }
+      });
+    }
     return FeaturePage(
       title: 'Notifications',
       child: ListView(

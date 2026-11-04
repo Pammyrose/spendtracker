@@ -19,7 +19,8 @@ class PaymentPlanPage extends StatefulWidget {
   State<PaymentPlanPage> createState() => _PaymentPlanPageState();
 }
 
-class _PaymentPlanPageState extends State<PaymentPlanPage> {
+class _PaymentPlanPageState extends State<PaymentPlanPage>
+    with WidgetsBindingObserver {
   final _form = GlobalKey<FormState>();
   late final _reason = TextEditingController(text: widget.bill.paymentReason);
   late DateTime _day =
@@ -32,9 +33,37 @@ class _PaymentPlanPageState extends State<PaymentPlanPage> {
       : const TimeOfDay(hour: 9, minute: 0);
   late String _repeat = widget.bill.followUpRepeat;
   bool _saving = false;
+  bool _timingAllowed = false;
+  bool _checkedTiming = false;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_checkedTiming) {
+      _checkedTiming = true;
+      _checkTiming();
+    }
+  }
+
+  Future<void> _checkTiming() async {
+    final allowed = await AppDataScope.of(context).paymentTiming();
+    if (mounted) setState(() => _timingAllowed = allowed);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _checkTiming();
+  }
+
   String? _error;
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _reason.dispose();
     super.dispose();
   }
@@ -69,6 +98,8 @@ class _PaymentPlanPageState extends State<PaymentPlanPage> {
       );
       await data.flush();
       if (!mounted) return;
+      final precise = await data.paymentTiming();
+      if (!mounted) return;
       Navigator.pop(
         context,
         !data.storageAvailable
@@ -77,6 +108,8 @@ class _PaymentPlanPageState extends State<PaymentPlanPage> {
             ? 'Payment plan saved. Bill reminders are off in Settings.'
             : !allowed
             ? 'Payment plan saved. Enable Android notifications for SpendTracker to receive reminders.'
+            : !precise
+            ? 'Payment plan saved. Allow Alarms & reminders for on-time notifications; Android may delay delivery otherwise.'
             : _repeat == 'Once'
             ? 'Payment plan saved. One reminder is scheduled.'
             : 'Payment plan saved. Reminders repeat until the bill is paid.',
@@ -205,6 +238,57 @@ class _PaymentPlanPageState extends State<PaymentPlanPage> {
                       .toList(),
                   onChanged: (value) => setState(() => _repeat = value!),
                 ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Phone notification: ${paymentTime(
+                      context,
+                      DateTime(
+                        _day.year,
+                        _day.month,
+                        _day.day,
+                        _time.hour,
+                        _time.minute,
+                      ),
+                    )}',
+                key: const Key('payment-notification-time'),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+              if (!_timingAllowed) ...[
+                const SizedBox(height: 6),
+                const Text(
+                  'Android may delay reminders. Allow Alarms & reminders to receive them at your selected time.',
+                  style: TextStyle(fontSize: 12),
+                ),
+                TextButton(
+                  key: const Key('allow-reminder-timing'),
+                  onPressed: () async {
+                    await data.paymentTiming(openSettings: true);
+                    if (mounted) await _checkTiming();
+                  },
+                  child: const Text('Allow on-time reminders'),
+                ),
+              ],
+              TextButton.icon(
+                key: const Key('test-phone-reminder'),
+                icon: const Icon(Icons.notifications_active_outlined),
+                label: const Text('Send test notification'),
+                onPressed: () async {
+                  final sent = await data.testPaymentNotification();
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        sent
+                            ? 'Test notification sent. Check your phone notification shade.'
+                            : 'Allow SpendTracker notifications in Android Settings, then try again.',
+                      ),
+                    ),
+                  );
+                },
               ),
               if (remindersOff)
                 Container(

@@ -71,6 +71,39 @@ void main() {
     },
   );
 
+  test(
+    'Unread badge clears, persists, and returns for the next repeat',
+    () async {
+      final data = AppData(seed: false);
+      final now = DateTime(2026, 10, 29, 10);
+      final bill = Bill(name: 'Rent', amount: 100, due: now)
+        ..paymentPlanAt = now.subtract(const Duration(hours: 1))
+        ..paymentReason = 'Landlord away'
+        ..followUpRepeat = 'Daily';
+      data.bills.bills.add(bill);
+      final future = Bill(name: 'Internet', amount: 100, due: now)
+        ..paymentPlanAt = now.add(const Duration(hours: 1))
+        ..paymentReason = 'Later';
+      data.bills.bills.add(future);
+      expect(unreadNotificationCount(data, now), 1);
+      data.markNotificationsRead(now);
+      expect(unreadNotificationCount(data, now), 0);
+      final restored = AppData(seed: false)..restore(data.backupJson());
+      expect(unreadNotificationCount(restored, now), 0);
+      expect(
+        unreadNotificationCount(restored, now.add(const Duration(days: 1))),
+        2,
+      );
+      restored.bills.bills.first.paid = true;
+      expect(
+        unreadNotificationCount(restored, now.add(const Duration(days: 1))),
+        1,
+      );
+      data.dispose();
+      restored.dispose();
+    },
+  );
+
   testWidgets(
     'Home bell opens alerts, opens a bill, and removes its paid alert',
     (tester) async {

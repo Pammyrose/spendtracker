@@ -22,6 +22,7 @@ export const backupSchema = z.object({
     customColor: z.number().int().min(0).max(0xffffffff).optional(), customDark: z.boolean().optional(),
     notificationsEnabled: z.boolean(), billReminders: z.boolean(), incomeReminders: z.boolean(), expenseAlerts: z.boolean(), monthlySummary: z.boolean(),
     billReminderTime: z.enum(reminderTimes), incomeReminderTime: z.enum(reminderTimes), expenseAlertAmount: amount,
+    notificationsReadAt: date.nullable().optional(),
   }).strict(),
   categories: z.object({ expense: catalog, income: catalog, bill: catalog }).strict().optional(),
   transactionActivity: z.array(z.object({ kind: z.enum(['expenseAdded', 'incomeAdded', 'incomeUpdated', 'incomeDeleted', 'billPaid', 'billUnpaid']), name, amount, recordedAt: date, transactionDate: date }).strict()).max(200).optional(),

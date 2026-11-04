@@ -14,10 +14,12 @@ void main() {
   String? saved;
   bool permission = true;
   int permissionRequests = 0;
+  int previews = 0;
   setUp(() {
     saved = null;
     permission = true;
     permissionRequests = 0;
+    previews = 0;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(deviceStorage, (call) async {
           if (call.method == 'loadData') return saved;
@@ -25,6 +27,11 @@ void main() {
             saved = call.arguments as String;
             return null;
           }
+          if (call.method == 'testPaymentNotification') {
+            previews++;
+            return true;
+          }
+          if (call.method == 'reminderTimingAllowed') return true;
           if (call.method == 'requestNotifications') {
             permissionRequests++;
             return permission;
@@ -131,6 +138,21 @@ void main() {
     await tester.tap(find.byKey(const Key('pay-later')));
     await tester.pumpAndSettle();
   }
+
+  testWidgets(
+    'Phone preview requests permission without creating a payment plan',
+    (tester) async {
+      await start(tester);
+      final before = saved;
+      await tester.ensureVisible(find.byKey(const Key('test-phone-reminder')));
+      await tester.tap(find.byKey(const Key('test-phone-reminder')));
+      await tester.pumpAndSettle();
+      expect(permissionRequests, 1);
+      expect(previews, 1);
+      expect(saved, before);
+      expect(find.textContaining('Test notification sent.'), findsOneWidget);
+    },
+  );
 
   for (final allowed in [true, false]) {
     testWidgets('Pay later saves an unpaid bill, permission $allowed', (

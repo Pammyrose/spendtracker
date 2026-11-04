@@ -1,0 +1,17 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="128dp" android:height="128dp" android:viewportWidth="128" android:viewportHeight="128">
+    <!-- Match the original wallet illustration on the welcome screen. -->
+    <group android:translateX="-6">
+        <path android:fillColor="#FFC45E" android:pathData="M69,15 A21,21 0,1 0,69,57 A21,21 0,1 0,69,15" />
+        <path android:fillColor="#FFE2A0" android:pathData="M69,21 A15,15 0,1 0,69,51 A15,15 0,1 0,69,21" />
+        <path android:strokeColor="#FFBC60" android:strokeWidth="4" android:strokeLineCap="round" android:pathData="M72,25 L65,46" />
+        <path android:fillColor="#FFABC0" android:strokeColor="#F04D83" android:strokeWidth="3" android:strokeLineJoin="round" android:pathData="M28,55 L91,43 Q102,40 102,52 L102,72 L28,76 Z" />
+        <path android:strokeColor="#F04D83" android:strokeWidth="3" android:pathData="M35,55 L97,55 Q106,55 106,64 L106,106 Q106,115 97,115 L35,115 Q26,115 26,106 L26,64 Q26,55 35,55 Z">
+            <aapt:attr name="android:fillColor"><gradient android:startX="26" android:startY="55" android:endX="106" android:endY="115" android:startColor="#FFCFDC" android:endColor="#FF85AD" android:type="linear" /></aapt:attr>
+        </path>
+        <path android:strokeColor="#FFF0F5" android:strokeWidth="2" android:strokeLineCap="round" android:pathData="M33,62 L98,62" />
+        <path android:fillColor="#F06488" android:pathData="M89,77 L99,77 Q108,77 108,86 L108,90 Q108,99 99,99 L89,99 Q80,99 80,90 L80,86 Q80,77 89,77 Z" />
+        <path android:fillColor="#FFE2EB" android:pathData="M91,84 A4,4 0,1 0,91,92 A4,4 0,1 0,91,84" />
+        <path android:strokeColor="#D47553" android:strokeWidth="2.8" android:strokeLineCap="round" android:pathData="M100,18 L104,11 M107,28 L115,26" />
+    </group>
+</vector>

@@ -85,9 +85,23 @@ class MainActivity : FlutterActivity() {
                     }
                     else reply.error("SAVE_FAILED", "Records could not be saved on this device.", null)
                 }
+                "testPaymentNotification" -> reply.success(BillReminderScheduler.testNotification(this))
+                "reminderTimingAllowed" -> reply.success(BillReminderScheduler.timingAllowed(this))
+                "openReminderTiming" -> {
+                    if (Build.VERSION.SDK_INT >= 31 && !BillReminderScheduler.timingAllowed(this)) {
+                        try {
+                            startActivity(Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                android.net.Uri.parse("package:$packageName")))
+                        } catch (_: Exception) {
+                            reply.error("SETTINGS_UNAVAILABLE", "Open Android Settings to allow Alarms & reminders.", null)
+                            return@setMethodCallHandler
+                        }
+                    }
+                    reply.success(BillReminderScheduler.timingAllowed(this))
+                }
                 "requestNotifications" -> {
                     BillReminderScheduler.createChannel(this)
-                    val channel = if (call.arguments == "expenses") ExpenseAlertNotifier.channelId else "payment_followups"
+                    val channel = if (call.arguments == "expenses") ExpenseAlertNotifier.channelId else BillReminderScheduler.channelId
                     if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                         if (notificationReply != null) reply.error("BUSY", "Finish the notification permission request first.", null)
                         else {

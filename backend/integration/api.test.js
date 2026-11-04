@@ -61,10 +61,12 @@ test('MySQL-backed accounts, isolation, revisions, validation, and logout', asyn
   const billSaved = await request('GET', '/backup', null, token);
   assert.equal(billSaved.body.data.bills[0].name, 'My actual rent');
   actual.bills[0].paid = true;
+  actual.settings.notificationsReadAt = '2026-10-29T10:00:00.000';
   assert.equal((await request('PUT', '/backup', { revision: 3, data: actual }, token)).status, 200);
   const signedInForBills = await request('POST', '/auth/login', { email: emails[0], password: 'test-password-123' });
   const billReloaded = await request('GET', '/backup', null, signedInForBills.body.token);
   assert.equal(billReloaded.body.data.bills[0].paid, true);
+  assert.equal(billReloaded.body.data.settings.notificationsReadAt, actual.settings.notificationsReadAt);
   assert.equal((await request('GET', '/backup', null, second.body.token)).body.data, null);
   assert.equal((await request('DELETE', '/auth/session', null, token)).status, 204);
   assert.equal((await request('GET', '/backup', null, token)).status, 401);

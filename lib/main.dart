@@ -151,21 +151,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Expanded(child: const AccountGreeting()),
-                                IconButton(
-                                  tooltip: 'Notifications',
-                                  icon: const Icon(
-                                    Icons.notifications_none_rounded,
-                                  ),
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            const NotificationsInboxPage(),
-                                      ),
-                                    );
-                                  },
-                                ),
+                                const NotificationBell(),
                               ],
                             ),
                           ),

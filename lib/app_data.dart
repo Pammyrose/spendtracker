@@ -339,6 +339,13 @@ class AppData extends ChangeNotifier {
   String billReminderTime = '3 days before',
       incomeReminderTime = '1 day before';
   double expenseAlertAmount = 10000;
+  DateTime? notificationsReadAt;
+
+  void markNotificationsRead(DateTime at) {
+    notificationsReadAt = at;
+    changed();
+  }
+
   // Only recorded spending through today counts; future entries are not spent yet.
   double spendingThrough(DateTime now) => expenses
       .where(
@@ -502,6 +509,33 @@ class AppData extends ChangeNotifier {
     }
   }
 
+  Future<bool> testPaymentNotification() async {
+    if (!await requestPaymentNotifications()) return false;
+    try {
+      return await deviceStorage.invokeMethod<bool>(
+            'testPaymentNotification',
+          ) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  Future<bool> paymentTiming({bool openSettings = false}) async {
+    try {
+      return await deviceStorage.invokeMethod<bool>(
+            openSettings ? 'openReminderTiming' : 'reminderTimingAllowed',
+          ) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
   Future<bool> requestExpenseNotifications() async {
     try {
       return await deviceStorage.invokeMethod<bool>(
@@ -529,6 +563,7 @@ class AppData extends ChangeNotifier {
     'billReminderTime': billReminderTime,
     'incomeReminderTime': incomeReminderTime,
     'expenseAlertAmount': expenseAlertAmount,
+    'notificationsReadAt': notificationsReadAt?.toIso8601String(),
   };
   String backupJson() => jsonEncode({
     'version': 1,
@@ -724,6 +759,9 @@ class AppData extends ChangeNotifier {
         throw const FormatException('Invalid reminder time.');
       }
       final threshold = amount(s['expenseAlertAmount']);
+      final readAt = s['notificationsReadAt'] == null
+          ? null
+          : date(s['notificationsReadAt']);
       final activitySource = raw['transactionActivity'] ?? [];
       if (activitySource is! List || activitySource.length > 200) {
         throw const FormatException('Invalid transaction activity.');
@@ -773,6 +811,7 @@ class AppData extends ChangeNotifier {
       billReminderTime = s['billReminderTime'];
       incomeReminderTime = s['incomeReminderTime'];
       expenseAlertAmount = threshold;
+      notificationsReadAt = readAt;
     } on FormatException {
       rethrow;
     } catch (_) {
@@ -781,6 +820,7 @@ class AppData extends ChangeNotifier {
   }
 
   void clearRecords() {
+    notificationsReadAt = null;
     transactionActivity.clear();
     expenses.clear();
     incomes.clear();
